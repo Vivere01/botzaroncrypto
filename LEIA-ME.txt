@@ -1,0 +1,25 @@
+============================================================
+INSTRUÇÕES DE SEGURANÇA E CONFIGURAÇÃO DO SCALP BOT
+============================================================
+
+1. VARIÁVEIS DE AMBIENTE:
+   As chaves API foram removidas do arquivo `config.py` para evitar que fossem
+   expostas publicamente no GitHub em repositórios abertos.
+
+   Para rodar o bot localmente, configure as variáveis de ambiente em seu terminal
+   Powershell no Windows antes de executar:
+
+   $env:BINANCE_API_KEY="su16hImgPza6rtQYm4Jvs2r8JJeXvOe1u3HZHf4YeH4Ts904dU42i91kFI2unV7F"
+   $env:BINANCE_API_SECRET="L27nCQVwHR0GShw0ZgniqmRmGePtnFX0nyRZOfDVbAJJfTeXcUJr6XMmggxpxWMa"
+
+   Em seguida, você pode iniciar o bot pelo main.py:
+   python main.py
+
+2. COMMITS E GIT:
+   As credenciais originais foram expostas no primeiro commit local. Para garantir que
+   não haja rastros dessas chaves no histórico do repositório antes de realizar o push,
+   re-inicializamos e re-criamos o commit com as credenciais protegidas.
+
+3. EXECUTAR OS TESTES:
+   Para validar toda a integridade matemática do bot, execute:
+   python tests.py

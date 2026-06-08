@@ -1,0 +1,15 @@
+# Logs do bot e watchdog
+*.log
+
+# Arquivos de dados locais (histórico e estado de proteção)
+*.json
+
+# Ambientes virtuais e dependências
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
