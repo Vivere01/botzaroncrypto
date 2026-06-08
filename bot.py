@@ -12,6 +12,7 @@ import indicadores as ind_mod
 import sinais as sig_mod
 import risco as risk_mod
 import protecao as prot_mod
+import telegram_notif as tg
 
 # Importação condicional da Binance
 try:
@@ -47,6 +48,7 @@ class ScalpBot:
         self.log("=" * 55)
         self.log("  🤖 ScalpBot iniciando...")
         self.log("=" * 55)
+        self._trades_hoje: list = []
 
         # Conecta à Binance
         if BINANCE_OK:
@@ -171,7 +173,7 @@ class ScalpBot:
             pass   # log em arquivo falhou, continua
 
     def alerta(self, msg: str):
-        """Loga e envia mensagem ao Telegram se configurado."""
+        """Loga e envia mensagem simples ao Telegram (fallback)."""
         self.log(f"📢 {msg}")
         if REQUESTS_OK and config.TELEGRAM_TOKEN and config.TELEGRAM_CHAT_ID:
             try:
@@ -258,11 +260,14 @@ class ScalpBot:
         else:
             self.log("(Modo teste/testnet — posição simulada)")
 
-        self.alerta(
-            f"📈 {direcao.upper()} aberto\n"
-            f"Entrada: ${niveis['entrada']:,.2f}\n"
-            f"SL: ${niveis['stop_loss']:,.2f} | TP: ${niveis['take_profit']:,.2f}\n"
-            f"Qtd: {qty} BTC | Capital: ${tamanho['capital_usdt']:.2f}"
+        # Notificação rica ao Telegram
+        tg.posicao_aberta(
+            direcao   = direcao,
+            entrada   = niveis["entrada"],
+            sl        = niveis["stop_loss"],
+            tp        = niveis["take_profit"],
+            quantidade= qty,
+            capital   = tamanho["capital_usdt"],
         )
 
     # ── Fechamento de posição ────────────────────────────────
@@ -332,12 +337,32 @@ class ScalpBot:
         self.banca_atual = round(self.banca_atual + lucro_usdt, 4)
         self.log(f"   Banca atualizada: ${self.banca_atual:.2f}")
 
-        self.alerta(
-            f"{emoji} Trade fechado ({dir_pos.upper()})\n"
-            f"Motivo: {motivo}\n"
-            f"Resultado: {lucro_pct:+.2f}% | ${lucro_usdt:+.2f}\n"
-            f"Banca: ${self.banca_atual:.2f}"
-        )
+        # Salva trade do dia para resumo
+        self._trades_hoje.append(trade)
+
+        # Notificação rica ao Telegram
+        if lucro_usdt > 0:
+            tg.posicao_fechada_win(
+                direcao     = dir_pos,
+                entrada     = entrada,
+                saida       = preco,
+                lucro_usdt  = lucro_usdt,
+                lucro_pct   = lucro_pct,
+                motivo      = motivo,
+                banca       = self.banca_atual,
+                trades_hoje = len(self._trades_hoje),
+            )
+        else:
+            tg.posicao_fechada_loss(
+                direcao     = dir_pos,
+                entrada     = entrada,
+                saida       = preco,
+                perda_usdt  = lucro_usdt,
+                perda_pct   = lucro_pct,
+                motivo      = motivo,
+                banca       = self.banca_atual,
+                trades_hoje = len(self._trades_hoje),
+            )
 
         # Reseta estado
         self.posicao_aberta = None
@@ -348,7 +373,8 @@ class ScalpBot:
     def rodar(self):
         """Loop principal infinito do bot."""
         self.log("▶️  Bot iniciado — loop principal rodando")
-        self.alerta("🤖 ScalpBot iniciado e monitorando o mercado")
+        modo = "TESTNET" if config.USAR_TESTNET else "REAL ⚠️"
+        tg.bot_iniciado(self.banca_atual, modo)
 
         try:
             while True:
@@ -407,9 +433,8 @@ class ScalpBot:
                     if banca_inicial > 0:
                         queda = (banca_inicial - self.banca_atual) / banca_inicial
                         if queda >= config.STOP_GLOBAL_PCT:
-                            self.alerta(
-                                f"🛑 STOP GLOBAL ativado! Banca caiu {queda*100:.1f}%. Bot encerrado."
-                            )
+                            tg.stop_global_ativado(self.banca_atual, queda * 100)
+                            self.log(f"🛑 STOP GLOBAL ativado! Banca caiu {queda*100:.1f}%. Bot encerrado.")
                             return
 
                     # 7. Hibernação mensal
@@ -418,6 +443,7 @@ class ScalpBot:
                     )
                     if hibernando:
                         self.log(f"😴 Hibernando: {motivo_hib}")
+                        tg.hibernacao_ativada(motivo_hib)
                         time.sleep(config.CICLO_SEGUNDOS * 60)  # aguarda 1 hora
                         continue
 
@@ -495,4 +521,15 @@ class ScalpBot:
                 preco = self.get_preco()
                 if preco > 0:
                     self.fechar_posicao(preco, "Encerramento manual")
-            self.alerta("🛑 Bot encerrado manualmente pelo usuário")
+            tg.bot_encerrado(
+                motivo        = "Encerrado manualmente (Ctrl+C)",
+                banca_final   = self.banca_atual,
+                banca_inicial = config.BANCA_USDT,
+            )
+            # Envia resumo do dia se houver trades
+            if self._trades_hoje:
+                tg.resumo_diario(
+                    banca_inicio = self.banca_inicio_dia,
+                    banca_atual  = self.banca_atual,
+                    trades       = self._trades_hoje,
+                )
